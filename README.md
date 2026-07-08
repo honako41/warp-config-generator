@@ -43,10 +43,14 @@
 - **Форматы:** AmneziaWG (`.conf`, awg1.5) и Clash (`.yaml`)
 - **DNS:** `dns.geohide.ru` и `xbox-dns.ru`
 - **Эндпоинты (для AmneziaWG):** `162.159.195.1:500` и `engage.cloudflareclient.com:2408`
-- **Шаблоны Clash:** кастомные локальные шаблоны Computer / Mobile / Router в
-  [`config/templates/`](config/templates/) — на основе
-  [codelabhq/clash-warp-config](https://github.com/codelabhq/clash-warp-config), но
-  переработаны: без релеев, со своей структурой групп и расширенным пулом WARP-эндпоинтов
+- **Clash-роутинг:** переключатель **Компьютер / Телефон** — два шаблона:
+  - *Компьютер* — [`config/templates/clash.yaml`](config/templates/clash.yaml), правила из
+    [rekryt/iplist](https://github.com/rekryt/iplist)
+  - *Телефон* — [`config/templates/clash-mobile.yaml`](config/templates/clash-mobile.yaml),
+    роутинг из [hydraponique/roscomvpn-routing](https://github.com/hydraponique/roscomvpn-routing)
+
+  Заблокированные сервисы разложены по группам-тумблерам (AI, YouTube, Discord, Игры…) → через
+  WARP, а российский сегмент → напрямую. Что куда гнать, пользователь решает прямо в клиенте.
 - 🤖 **Telegram-бот** с тем же генератором — на случай, когда сайт недоступен
 - Результат открывается в модальном окне: копирование и скачивание файла
 
@@ -55,21 +59,6 @@
 - Next.js 15 (App Router) + React 19 + TypeScript
 - Генерация ключей — нативный `node:crypto` (X25519), без внешних крипто-зависимостей
 - Без UI-фреймворков: чистый CSS по дизайн-системе из `DESIGN.md`
-
-## ⚙️ Как это работает
-
-```
-ключи X25519  ──►  POST /reg (Cloudflare)  ──►  PATCH /reg/{id} warp_enabled
-                                                       │
-        ┌──────────────────────────────────────────────┘
-        ▼
-  AmneziaWG: собираем .conf (Jc/Jmin/Jmax, S1/S2, H1–H4, I1-сигнатура)
-  Clash:     берём локальный шаблон устройства и подставляем private-key, ipv6, dns
-```
-
-Вся логика — в [`lib/`](lib/) (регистрация, билдеры) и [`config/`](config/) (DNS, эндпоинты,
-шаблоны Clash). Точки входа — [`app/api/generate/route.ts`](app/api/generate/route.ts) (сайт)
-и [`app/api/telegram/route.ts`](app/api/telegram/route.ts) (Telegram-бот).
 
 ## 💻 Локальный запуск
 
@@ -87,10 +76,10 @@ npm start
 
 ## 🚀 Деплой
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/AppsGanin/warp-config-generator) &nbsp;
-[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/AppsGanin/warp-config-generator)
 
 ### Vercel
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/AppsGanin/warp-config-generator)
 
 1. Импортируйте репозиторий на [vercel.com/new](https://vercel.com/new).
 2. Framework определится как **Next.js** автоматически — настройки менять не нужно.
@@ -104,6 +93,8 @@ vercel
 ```
 
 ### Netlify
+
+[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/AppsGanin/warp-config-generator)
 
 В репозитории есть [`netlify.toml`](netlify.toml) с плагином
 `@netlify/plugin-nextjs` — Netlify подхватит Next.js автоматически.
@@ -125,10 +116,10 @@ netlify deploy --build --prod
 |---|---|
 | DNS-провайдеры | [`config/dns.ts`](config/dns.ts) |
 | Эндпоинты AmneziaWG | [`config/endpoints.ts`](config/endpoints.ts) |
-| Clash-шаблоны: правила, группы, узлы | [`config/templates/*.yaml`](config/templates/) |
-| Карта «устройство → файл шаблона» | [`config/clash-templates.ts`](config/clash-templates.ts) |
-| WARP-эндпоинты в шаблонах (диапазоны/порты) | [`scripts/gen-endpoints.mjs`](scripts/gen-endpoints.mjs) → `npm run gen:endpoints` |
-| Параметры awg1.5 (Jc/Jmin/Jmax, H1–H4) | [`lib/builders/amneziawg.ts`](lib/builders/amneziawg.ts) |
+| Clash-роутинг (компьютер) | [`config/templates/clash.yaml`](config/templates/clash.yaml) |
+| Clash-роутинг (телефон) | [`config/templates/clash-mobile.yaml`](config/templates/clash-mobile.yaml) |
+| WARP-эндпоинты (оба шаблона) | [`scripts/gen-endpoints.mjs`](scripts/gen-endpoints.mjs) → `npm run gen:endpoints` |
+| Параметры awg1.5 | [`lib/builders/amneziawg.ts`](lib/builders/amneziawg.ts) |
 | I1-маски (awg1.5-сигнатура) | [`lib/i1-masks.ts`](lib/i1-masks.ts) |
 | Логика Telegram-бота | [`lib/telegram.ts`](lib/telegram.ts) |
 
@@ -138,7 +129,8 @@ netlify deploy --build --prod
 (общая логика в [`lib/telegram.ts`](lib/telegram.ts)), переиспользует ту же `generateConfig`.
 Работает бесплатно на Vercel/Netlify — это обычная serverless-функция, которую дёргает Telegram.
 
-Бот пошагово спрашивает формат → устройство/эндпоинт → DNS и присылает готовый `.conf`/`.yaml` файлом.
+Бот пошагово спрашивает формат → эндпоинт (AmneziaWG) / устройство Компьютер·Телефон (Clash) → DNS
+и присылает готовый `.conf`/`.yaml` файлом.
 
 Настройка:
 

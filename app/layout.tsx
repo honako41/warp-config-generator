@@ -60,7 +60,8 @@ export default function RootLayout({
       </head>
       <body>
         {children}
-        <Analytics />
+        {/* Аналитику включаем только на Vercel — вне его (локально, другой хостинг) не трекаем. */}
+        {process.env.VERCEL && <Analytics />}
       </body>
     </html>
   );

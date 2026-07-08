@@ -33,8 +33,7 @@ export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
       : DEFAULT_HOST_ID;
   const port: WarpPort = WARP_PORTS.includes(b.port as WarpPort) ? (b.port as WarpPort) : DEFAULT_PORT;
   const ipv6 = b.ipv6 !== false;
-  const device: ClashDevice | undefined =
-    b.device === "mobile" || b.device === "router" ? b.device : "computer";
+  const clashDevice: ClashDevice = b.clashDevice === "mobile" ? "mobile" : "desktop";
 
   try {
     const data = await generateConfig({
@@ -43,7 +42,7 @@ export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
       endpointHostId,
       port,
       ipv6,
-      device,
+      clashDevice,
     });
     return NextResponse.json({ success: true, data });
   } catch (err) {

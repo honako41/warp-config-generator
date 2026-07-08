@@ -1,12 +1,11 @@
 import type { GenerateRequest, GenerateResult } from "@/types";
-import { DEFAULT_PORT } from "@/types";
+import { DEFAULT_CLASH_DEVICE, DEFAULT_PORT } from "@/types";
 import { generateKeyPair } from "./crypto";
 import { registerWarp } from "./cloudflare";
 import { buildAmneziaWG } from "./builders/amneziawg";
 import { buildClash } from "./builders/clash";
 import { resolveEndpoint } from "./endpoint-resolver";
 import { DEFAULT_HOST_ID } from "@/config/endpoints";
-import { DEFAULT_CLASH_DEVICE } from "@/config/clash-templates";
 import { getDnsProvider } from "@/config/dns";
 
 /**
@@ -48,18 +47,18 @@ export async function generateConfig(req: GenerateRequest): Promise<GenerateResu
     };
   }
 
-  const device = req.device ?? DEFAULT_CLASH_DEVICE;
+  const clashDevice = req.clashDevice ?? DEFAULT_CLASH_DEVICE;
   const config = await buildClash({
-    device,
     privateKey: keyPair.privateKey,
     clientIPv6: reg.clientIPv6,
     dnsId: req.dnsId,
+    device: clashDevice,
   });
   return {
     config,
-    fileName: `warp-clash-${device}.yaml`,
+    fileName: `warp-clash-${clashDevice}-${stamp()}.yaml`,
     format: "clash",
-    meta: { format: "clash", dnsLabel, device },
+    meta: { format: "clash", dnsLabel, clashDevice },
   };
 }
 

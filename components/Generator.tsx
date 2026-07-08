@@ -1,9 +1,9 @@
 "use client";
 
-import { CLASH_DEVICES } from "@/config/clash-templates";
 import { DNS_PROVIDERS } from "@/config/dns";
 import { DONATE_URL } from "@/config/donate";
 import { DEFAULT_HOST_ID, ENDPOINT_HOSTS } from "@/config/endpoints";
+import { GUIDES, OS_OPTIONS, detectOs, type OsId } from "@/config/guides";
 import type { Sponsor } from "@/config/sponsor";
 import { copyConfig, download, saveEntry } from "@/lib/history";
 import type {
@@ -15,15 +15,19 @@ import type {
   GenerateResult,
   WarpPort,
 } from "@/types";
-import { DEFAULT_PORT, WARP_PORTS } from "@/types";
-import { useRef, useState } from "react";
+import { DEFAULT_CLASH_DEVICE, DEFAULT_PORT, WARP_PORTS } from "@/types";
+import { track } from "@vercel/analytics";
+import { useEffect, useRef, useState } from "react";
 
 const FORMAT_OPTIONS: readonly { value: ConfigFormat; label: string }[] = [
   { value: "amneziawg", label: "Amnezia" },
   { value: "clash", label: "Clash" },
 ];
+const CLASH_DEVICE_OPTIONS: readonly { value: ClashDevice; label: string }[] = [
+  { value: "desktop", label: "Компьютер" },
+  { value: "mobile", label: "Телефон" },
+];
 const DNS_OPTIONS = DNS_PROVIDERS.map((p) => ({ value: p.id, label: p.label }));
-const DEVICE_OPTIONS = CLASH_DEVICES.map((d) => ({ value: d.id, label: d.label }));
 const HOST_OPTIONS = ENDPOINT_HOSTS.map((h) => ({ value: h.id, label: h.label }));
 const PORT_OPTIONS = WARP_PORTS.map((p) => ({ value: String(p), label: String(p) }));
 
@@ -32,52 +36,6 @@ const SOURCE_LABEL: Record<NonNullable<ConfigMeta["endpointSource"]>, string> = 
   "manual-ip": "выбрано",
   hostname: "hostname",
   fallback: "резерв",
-};
-
-type Guide = { app: string; url: string; steps: string[] };
-
-const AMNEZIA_GUIDE: Guide = {
-  app: "AmneziaVPN",
-  url: "https://amnezia.org/ru/downloads",
-  steps: [
-    "Установите AmneziaVPN — обычные WireGuard-клиенты не поддерживают awg-обфускацию.",
-    "Откройте приложение → «+» → «У меня есть данные для подключения».",
-    "Импортируйте скачанный файл .conf (или вставьте текст конфига).",
-    "Выберите протокол AmneziaWG и нажмите «Подключиться».",
-  ],
-};
-
-const CLASH_GUIDE: Record<ClashDevice, Guide> = {
-  computer: {
-    app: "Mihomo Party",
-    url: "https://github.com/mihomo-party-org/mihomo-party/releases",
-    steps: [
-      "Установите Mihomo Party (Windows / macOS / Linux) — есть английский интерфейс.",
-      "Subscriptions → Import → «Local File» → выберите скачанный .yaml (или перетащите).",
-      "Кликните по профилю, чтобы активировать его.",
-      "Включите TUN Mode и/или системный прокси.",
-    ],
-  },
-  mobile: {
-    app: "FlClash",
-    url: "https://github.com/chen08209/FlClash/releases",
-    steps: [
-      "Android: поставьте FlClash или Clash Meta for Android. iOS: Stash или Shadowrocket (платные).",
-      "Откройте приложение → Профили → «+» → импорт из файла.",
-      "Выберите скачанный .yaml (или «Поделиться» файлом в приложение).",
-      "Активируйте профиль и нажмите «Подключить».",
-    ],
-  },
-  router: {
-    app: "Nikki",
-    url: "https://github.com/nikkinikki-org/OpenWrt-nikki",
-    steps: [
-      "На роутере с OpenWrt установите Nikki (luci-app-nikki, ядро mihomo) — английский интерфейс.",
-      "LuCI → Services → Nikki → Profiles → загрузите скачанный .yaml.",
-      "Выберите его активным профилем и сохраните (Save & Apply).",
-      "Включите Nikki (Enable) на вкладке Status.",
-    ],
-  },
 };
 
 const LINK_CLASS =
@@ -207,10 +165,12 @@ function Diagnostics({ meta }: { meta: ConfigMeta }) {
       rows.push(["Endpoint", `${meta.endpoint}${src}`]);
     }
     rows.push(["IPv6", meta.ipv6 ? "включён" : "выключен"]);
+    rows.push(["DNS", meta.dnsLabel]);
   } else {
-    rows.push(["Формат", `Clash${meta.device ? ` · ${meta.device}` : ""}`]);
+    rows.push(["Формат", "Clash"]);
+    rows.push(["Устройство", meta.clashDevice === "mobile" ? "Телефон" : "Компьютер"]);
+    rows.push(["DNS", meta.dnsLabel]);
   }
-  rows.push(["DNS", meta.dnsLabel]);
 
   return (
     <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-xl border border-hairline bg-surface-soft px-4 py-3 text-[13px]">
@@ -224,28 +184,51 @@ function Diagnostics({ meta }: { meta: ConfigMeta }) {
   );
 }
 
-function ImportGuide({
+const OS_TAB_OPTIONS = OS_OPTIONS.map((o) => ({ value: o.id, label: o.label }));
+
+function ConnectGuide({
   format,
-  device,
-  divider = false,
+  os,
+  onOsChange,
 }: {
   format: ConfigFormat;
-  device: ClashDevice;
-  divider?: boolean;
+  os: OsId;
+  onOsChange: (os: OsId) => void;
 }) {
-  const g = format === "amneziawg" ? AMNEZIA_GUIDE : CLASH_GUIDE[device];
+  const g = GUIDES[format][os];
+  const multi = g.apps.length > 1;
   return (
-    <section className={divider ? "mt-5 border-t border-hairline pt-5" : ""}>
-      <h3 className="mb-2.5 text-sm font-semibold text-ink">Как подключить</h3>
-      <ol className="m-0 flex list-decimal flex-col gap-1.5 pl-5 text-[13.5px] leading-relaxed text-body marker:tabular-nums marker:text-mute">
-        {g.steps.map((s, i) => (
-          <li key={i}>{s}</li>
-        ))}
-      </ol>
-      <a className={LINK_CLASS} href={g.url} target="_blank" rel="noopener noreferrer">
-        Скачать {g.app} ↗
-      </a>
-    </section>
+    <div className="flex flex-col gap-4">
+      <Segmented label="Устройство" value={os} options={OS_TAB_OPTIONS} onChange={onOsChange} />
+      {g.apps.map((app, ai) => (
+        <section key={app.name} className={ai > 0 ? "border-t border-hairline pt-4" : ""}>
+          {multi && (
+            <h4 className="mb-2 text-[13px] font-bold uppercase tracking-wide text-brand">
+              {app.name}
+            </h4>
+          )}
+          <ol className="m-0 flex list-decimal flex-col gap-1.5 pl-5 text-[13.5px] leading-relaxed text-body marker:tabular-nums marker:text-mute">
+            {app.steps.map((s, i) => (
+              <li key={i}>{s}</li>
+            ))}
+          </ol>
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            {app.links.map((c) => (
+              <a
+                key={c.url}
+                className={LINK_CLASS}
+                href={c.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => track("client_download", { app: c.app, format, os })}
+              >
+                Скачать {c.app} ↗
+              </a>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
   );
 }
 
@@ -262,7 +245,13 @@ function SponsorBlock({
         {sponsor.title}
       </span>
       <p className="m-0 text-[13.5px] leading-relaxed text-body">{sponsor.text}</p>
-      <a className={LINK_CLASS} href={sponsor.url} target="_blank" rel="noopener noreferrer">
+      <a
+        className={LINK_CLASS}
+        href={sponsor.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={() => track("sponsor", { title: sponsor.title })}
+      >
         {sponsor.cta} ↗
       </a>
     </aside>
@@ -275,14 +264,33 @@ export default function Generator({ sponsor }: { sponsor: Sponsor | null }) {
   const [endpointHostId, setEndpointHostId] = useState<string>(DEFAULT_HOST_ID);
   const [port, setPort] = useState<WarpPort>(DEFAULT_PORT);
   const [ipv6, setIpv6] = useState(true);
-  const [device, setDevice] = useState<ClashDevice>("computer");
+  const [clashDevice, setClashDevice] = useState<ClashDevice>(DEFAULT_CLASH_DEVICE);
 
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<GenerateResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  const [os, setOs] = useState<OsId>("windows");
+  const [guideFormat, setGuideFormat] = useState<ConfigFormat>("amneziawg");
+
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const guideRef = useRef<HTMLDialogElement>(null);
+
+  // Подставляем вкладку под ОС пользователя (только на клиенте, чтобы не ломать гидрацию).
+  useEffect(() => setOs(detectOs()), []);
+
+  function openGuide(f: ConfigFormat) {
+    setGuideFormat(f);
+    guideRef.current?.showModal();
+    track("guide_open", { format: f, os });
+  }
+  function closeGuide() {
+    guideRef.current?.close();
+  }
+  function onGuideBackdropClick(e: React.MouseEvent<HTMLDialogElement>) {
+    if (e.target === guideRef.current) closeGuide();
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -293,19 +301,22 @@ export default function Generator({ sponsor }: { sponsor: Sponsor | null }) {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ format, dnsId, endpointHostId, port, ipv6, device }),
+        body: JSON.stringify({ format, dnsId, endpointHostId, port, ipv6, clashDevice }),
       });
       const json = (await res.json()) as ApiResponse;
       if (!json.success) {
         setError(json.error);
+        track("generate_error", { format, reason: "api", message: json.error });
         return;
       }
       setResult(json.data);
       saveEntry(json.data);
       setCopied(false);
       dialogRef.current?.showModal();
+      track("generate", { format, dns: dnsId, ipv6, port, clashDevice });
     } catch {
       setError("Не удалось связаться с сервером. Попробуйте ещё раз.");
+      track("generate_error", { format, reason: "network" });
     } finally {
       setLoading(false);
     }
@@ -324,6 +335,7 @@ export default function Generator({ sponsor }: { sponsor: Sponsor | null }) {
     if (await copyConfig(result.config)) {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
+      track("copy", { format: result.format });
     } else {
       setError("Не удалось скопировать в буфер обмена.");
     }
@@ -360,9 +372,9 @@ export default function Generator({ sponsor }: { sponsor: Sponsor | null }) {
         {format === "clash" && (
           <Segmented
             label="Устройство"
-            value={device}
-            options={DEVICE_OPTIONS}
-            onChange={setDevice}
+            value={clashDevice}
+            options={CLASH_DEVICE_OPTIONS}
+            onChange={setClashDevice}
           />
         )}
 
@@ -418,9 +430,18 @@ export default function Generator({ sponsor }: { sponsor: Sponsor | null }) {
         </div>
       )}
 
-      <div className="mt-4 rounded-2xl border border-hairline bg-surface-soft p-6">
-        <ImportGuide format={format} device={device} />
-      </div>
+      <button
+        type="button"
+        onClick={() => openGuide(format)}
+        className="mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-hairline bg-surface-soft px-5 text-sm font-semibold text-ink transition-colors hover:bg-surface"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+          <line x1="12" y1="17" x2="12.01" y2="17" />
+        </svg>
+        Как подключиться
+      </button>
 
       <dialog
         ref={dialogRef}
@@ -470,7 +491,10 @@ export default function Generator({ sponsor }: { sponsor: Sponsor | null }) {
               <button
                 type="button"
                 className={secondaryBtn}
-                onClick={() => download(result.fileName, result.config)}
+                onClick={() => {
+                  download(result.fileName, result.config);
+                  track("download", { format: result.format });
+                }}
               >
                 Скачать
               </button>
@@ -478,12 +502,21 @@ export default function Generator({ sponsor }: { sponsor: Sponsor | null }) {
 
             {sponsor && <SponsorBlock sponsor={sponsor} divider />}
 
-            <ImportGuide format={result.format} device={device} divider />
+            <div className="mt-5 border-t border-hairline pt-5">
+              <button
+                type="button"
+                onClick={() => openGuide(result.format)}
+                className={secondaryBtn + " w-full"}
+              >
+                Как подключиться
+              </button>
+            </div>
 
             <a
               href={DONATE_URL}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={() => track("donate", { from: "result" })}
               className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border border-brand/40 bg-brand/10 px-6 py-2 text-[15px] font-semibold text-brand transition-colors hover:bg-brand/20"
             >
               <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -493,6 +526,36 @@ export default function Generator({ sponsor }: { sponsor: Sponsor | null }) {
             </a>
           </div>
         )}
+      </dialog>
+
+      <dialog
+        ref={guideRef}
+        className="m-auto max-h-[calc(100dvh-48px)] w-[calc(100vw-32px)] max-w-lg overflow-hidden rounded-2xl border border-hairline bg-surface p-0 text-body shadow-[0_24px_60px_-16px_rgba(0,0,0,0.45)] backdrop:bg-black/50"
+        aria-labelledby="guide-title"
+        onClick={onGuideBackdropClick}
+      >
+        <div className="flex max-h-[calc(100dvh-48px)] flex-col gap-4 overflow-y-auto p-6">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 id="guide-title" className="text-lg font-bold text-ink">
+                Как подключиться
+              </h2>
+              <span className="mt-1 block text-xs text-mute">
+                {guideFormat === "amneziawg" ? "AmneziaWG" : "Clash"} · выберите устройство
+              </span>
+            </div>
+            <button
+              type="button"
+              className="inline-flex h-8 w-8 flex-none cursor-pointer items-center justify-center rounded-full border border-hairline-strong bg-surface text-[13px] text-ink transition-colors hover:bg-surface-soft"
+              aria-label="Закрыть"
+              onClick={closeGuide}
+            >
+              ✕
+            </button>
+          </div>
+
+          <ConnectGuide format={guideFormat} os={os} onOsChange={setOs} />
+        </div>
       </dialog>
     </>
   );
