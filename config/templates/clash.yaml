@@ -47,6 +47,10 @@ allow-lan: false
 unified-delay: true
 tcp-concurrent: true
 
+external-controller: 0.0.0.0:9090
+external-ui: ./ui
+external-ui-url: 'https://github.com/MetaCubeX/metacubexd/archive/gh-pages.zip'
+
 dns:
   enable: true
   listen: 0.0.0.0:7874
@@ -482,6 +486,13 @@ rule-providers:
     url: "https://iplist.my-handbook.ru/?format=clashx&data=domains&wildcard=1&group=socials"
     path: ./ruleset/socials-domain.list
     interval: *default-interval
+  meta-domain:
+    type: http
+    behavior: classical
+    format: text
+    url: "https://iplist.my-handbook.ru/?format=clashx&data=domains&wildcard=1&group=meta"
+    path: ./ruleset/meta-domain.list
+    interval: *default-interval
   news-domain:
     type: http
     behavior: classical
@@ -537,6 +548,48 @@ rule-providers:
     format: text
     url: "https://iplist.my-handbook.ru/?format=clashx&data=domains&wildcard=1&group=torrent"
     path: ./ruleset/torrent-domain.list
+    interval: *default-interval
+  block-domain:
+    type: http
+    behavior: classical
+    format: text
+    url: "https://iplist.my-handbook.ru/?format=clashx&data=domains&wildcard=1&group=block"
+    path: ./ruleset/block-domain.list
+    interval: *default-interval
+  geoblock-domain:
+    type: http
+    behavior: classical
+    format: text
+    url: "https://iplist.my-handbook.ru/?format=clashx&data=domains&wildcard=1&group=geoblock"
+    path: ./ruleset/geoblock-domain.list
+    interval: *default-interval
+  repo-domain:
+    type: http
+    behavior: classical
+    format: text
+    url: "https://iplist.my-handbook.ru/?format=clashx&data=domains&wildcard=1&group=repo"
+    path: ./ruleset/repo-domain.list
+    interval: *default-interval
+  googleplay-domain:
+    type: http
+    behavior: classical
+    format: text
+    url: "https://iplist.my-handbook.ru/?format=clashx&data=domains&wildcard=1&group=googleplay"
+    path: ./ruleset/googleplay-domain.list
+    interval: *default-interval
+  opencck-ru-domain:
+    type: http
+    behavior: classical
+    format: text
+    url: "https://russia.iplist.opencck.org/?format=clashx&data=domains&wildcard=1"
+    path: ./ruleset/opencck-ru-domain.list
+    interval: *default-interval
+  opencck-ru-ip4:
+    type: http
+    behavior: classical
+    format: text
+    url: "https://russia.iplist.opencck.org/?format=clashx&data=cidr4"
+    path: ./ruleset/opencck-ru-ip4.list
     interval: *default-interval
   ru-domain:
     type: http
@@ -667,6 +720,26 @@ proxy-groups:
       - 🔓 Без VPN
       - Cloudflare
     icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Final.png
+  - name: Заблокировано
+    type: select
+    proxies:
+      - Cloudflare
+      - Relay-сервера
+      - 🔓 Без VPN
+    icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Unlock.png
+  - name: Геоблок
+    type: select
+    proxies:
+      - Cloudflare
+      - Relay-сервера
+      - 🔓 Без VPN
+    icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Global.png
+  - name: Google Play
+    type: select
+    proxies:
+      - 🔓 Без VPN
+      - Cloudflare
+    icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Google.png
   - name: ⚡️ Авто
     type: url-test
     tolerance: 200
@@ -711,6 +784,7 @@ rules:
   - RULE-SET,discord-domain,Discord
   - RULE-SET,messengers-domain,Мессенджеры
   - RULE-SET,socials-domain,Соцсети
+  - RULE-SET,meta-domain,Соцсети
   - RULE-SET,news-domain,Новости
   - RULE-SET,anime-domain,Аниме
   - RULE-SET,art-domain,Арт
@@ -720,6 +794,14 @@ rules:
   - RULE-SET,games-domain,Игры
   - RULE-SET,torrent-domain,Torrent
 
+  - DOMAIN-SUFFIX,windowsupdate.com,DIRECT
+  - RULE-SET,googleplay-domain,Google Play
+  - RULE-SET,block-domain,Заблокировано
+  - RULE-SET,geoblock-domain,Геоблок
+  - RULE-SET,repo-domain,Инструменты
+
+  - RULE-SET,opencck-ru-domain,DIRECT
+  - RULE-SET,opencck-ru-ip4,DIRECT,no-resolve
   - RULE-SET,ru-domain,DIRECT
   - RULE-SET,ru-ip4,DIRECT,no-resolve
 
