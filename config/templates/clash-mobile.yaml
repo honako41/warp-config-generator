@@ -407,16 +407,6 @@ proxy-groups:
   hidden: true
   proxies:
   - DIRECT
-- name: ⛔ Блок
-  type: select
-  hidden: true
-  proxies:
-  - REJECT
-- name: ⏭️ Пропуск
-  type: select
-  hidden: true
-  proxies:
-  - PASS
 rule-providers:
   private-domains:
     type: http

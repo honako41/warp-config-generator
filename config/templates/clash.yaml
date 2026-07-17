@@ -609,14 +609,14 @@ rule-providers:
 proxy-groups:
   - name: Cloudflare
     type: select
-    include-all-proxies: true
+    include-all: true
     proxies:
       - ⚡️ Авто
     filter: "⭐|☁️"
     icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Proxy.png
   - name: Relay-сервера
     type: select
-    include-all-proxies: true
+    include-all: true
     proxies:
       - 🎭 Авто
     filter: "🎭"
@@ -746,7 +746,7 @@ proxy-groups:
     url: *health-url
     interval: *check-interval
     timeout: 2000
-    include-all-proxies: true
+    include-all: true
     filter: "⭐|☁️"
     hidden: true
   - name: 🎭 Авто
@@ -755,7 +755,7 @@ proxy-groups:
     url: *health-url
     interval: *check-interval
     timeout: 2000
-    include-all-proxies: true
+    include-all: true
     filter: "🎭"
     hidden: true
   - name: 🔓 Без VPN
