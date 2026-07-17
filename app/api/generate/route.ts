@@ -1,15 +1,12 @@
 import { NextResponse } from "next/server";
 import { generateConfig } from "@/lib/warp";
-import { WARP_PORTS, DEFAULT_PORT_CHOICE } from "@/types";
-import type { ApiResponse, WarpPort, WarpPortChoice } from "@/types";
-import { ENDPOINT_HOSTS, DEFAULT_HOST_ID } from "@/config/endpoints";
+import { WARP_HOSTS, WARP_PORTS, DEFAULT_HOST_CHOICE, DEFAULT_PORT_CHOICE } from "@/types";
+import type { ApiResponse, WarpHost, WarpHostChoice, WarpPort, WarpPortChoice } from "@/types";
 
 // Registration calls Cloudflare per request and must never be cached; needs the
 // Node runtime for node:crypto key generation and node:net endpoint probing.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const HOST_IDS = new Set(ENDPOINT_HOSTS.map((h) => h.id));
 
 export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
   let body: unknown;
@@ -26,22 +23,20 @@ export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
   }
   const format = b.format;
 
-  const endpointHostId =
-    typeof b.endpointHostId === "string" && HOST_IDS.has(b.endpointHostId)
-      ? b.endpointHostId
-      : DEFAULT_HOST_ID;
-  // Всё, что не входит в пул (в т.ч. "auto" и отсутствие поля), — это «Авто».
+  // Всё, что не в пуле (в т.ч. "auto" и отсутствие поля), — это «Авто».
+  const host: WarpHostChoice = WARP_HOSTS.includes(b.host as WarpHost)
+    ? (b.host as WarpHost)
+    : DEFAULT_HOST_CHOICE;
   const port: WarpPortChoice = WARP_PORTS.includes(b.port as WarpPort)
     ? (b.port as WarpPort)
     : DEFAULT_PORT_CHOICE;
-  // Пробрасываем только явный выбор — дефолт per-format задаёт generateConfig
-  // (AmneziaWG → включён, Clash → выключен).
+  // Пробрасываем только явный выбор IPv6 — дефолт (выключен) задаёт generateConfig.
   const ipv6 = typeof b.ipv6 === "boolean" ? b.ipv6 : undefined;
 
   try {
     const data = await generateConfig({
       format,
-      endpointHostId,
+      host,
       port,
       ipv6,
     });

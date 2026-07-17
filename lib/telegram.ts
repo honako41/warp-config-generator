@@ -1,8 +1,19 @@
 import { generateConfig } from "./warp";
-import { ENDPOINT_HOSTS, endpointLabel } from "@/config/endpoints";
 import { SPONSOR, isSponsorEnabled } from "@/config/sponsor";
 import { DONATE_URL } from "@/config/donate";
-import type { ConfigFormat } from "@/types";
+import { WARP_HOSTS, WARP_PORTS } from "@/types";
+import type { ConfigFormat, WarpHostChoice, WarpPort, WarpPortChoice } from "@/types";
+
+/** Подпись для выбора эндпоинта: «Авто» или сам хост. */
+const hostLabel = (choice: string): string => (choice === "auto" ? "Авто" : choice);
+/** Подпись для выбора порта: «Авто» или номер. */
+const portLabel = (choice: WarpPortChoice): string => (choice === "auto" ? "Авто" : String(choice));
+
+/** callback-параметр в порт; всё, кроме известных портов, — «Авто». */
+function portOf(p: string | undefined): WarpPortChoice {
+  const n = Number(p);
+  return (WARP_PORTS as readonly number[]).includes(n) ? (n as WarpPort) : "auto";
+}
 
 // Shared Telegram-bot logic, used by the webhook route (app/api/telegram).
 // Reuses generateConfig as-is; the UI is a small inline-keyboard wizard.
@@ -102,28 +113,43 @@ function formatMenu(): Menu {
       "👋 <b>WARP Config RU</b>\n\n" +
       "Сгенерирую рабочий конфиг Cloudflare WARP со свежими ключами.\n\n" +
       "Формат:",
-    // Оба формата ведут к выбору эндпоинта. Порт — «Авто», IPv6 выключен;
-    // тонкая настройка живёт на сайте.
+    // Оба формата ведут к выбору эндпоинта → порта. IPv6 выключен (включить
+    // можно на сайте).
     rows: [
       [btn(`${FORMAT.amneziawg.emoji} AmneziaWG`, "f:amneziawg"), btn(`${FORMAT.clash.emoji} Clash`, "f:clash")],
     ],
   };
 }
 
+const HOST_CHOICES: WarpHostChoice[] = ["auto", ...WARP_HOSTS];
+const PORT_CHOICES: WarpPortChoice[] = ["auto", ...WARP_PORTS];
+
+// Хост выбран → шаг порта (h:format:host). Порт выбран → генерация.
 function endpointMenu(format: ConfigFormat): Menu {
   const f = FORMAT[format];
   return {
     text: `${f.emoji} <b>${f.label}</b>\n\nЭндпоинт:`,
     rows: [
-      ...ENDPOINT_HOSTS.map((e) => [btn(e.label, `g:${format}:${e.id}`)]),
+      ...HOST_CHOICES.map((h) => [btn(hostLabel(h), `h:${format}:${h}`)]),
       [btn("‹ Назад", "back:format")],
     ],
   };
 }
 
-function summary(format: ConfigFormat, mid: string): string {
+function portMenu(format: ConfigFormat, host: string): Menu {
   const f = FORMAT[format];
-  return `${f.emoji} <b>${f.label}</b> · ${endpointLabel(mid)}`;
+  return {
+    text: `${f.emoji} <b>${f.label}</b> · ${hostLabel(host)}\n\nПорт:`,
+    rows: [
+      ...PORT_CHOICES.map((p) => [btn(portLabel(p), `g:${format}:${host}:${p}`)]),
+      [btn("‹ Назад", `f:${format}`)],
+    ],
+  };
+}
+
+function summary(format: ConfigFormat, host: string, port: WarpPortChoice): string {
+  const f = FORMAT[format];
+  return `${f.emoji} <b>${f.label}</b> · ${hostLabel(host)} · ${portLabel(port)}`;
 }
 
 /** callback-параметр (p1) в формат; всё, кроме "clash", считаем AmneziaWG. */
@@ -177,7 +203,7 @@ async function onCallback(cq: TgCallback): Promise<void> {
     await answer(cq.id);
     return;
   }
-  const [kind, p1, p2] = data.split(":");
+  const [kind, p1, p2, p3] = data.split(":");
   const show = (menu: Menu) => edit(chatId, messageId, menu.text, menu.rows);
 
   // "Ещё конфиг" обычно приходит с сообщения-файла (его текст editMessageText
@@ -193,16 +219,17 @@ async function onCallback(cq: TgCallback): Promise<void> {
     await answer(cq.id);
     await edit(chatId, messageId, "⏳ Генерирую конфиг…", []);
     const format = formatOf(p1);
+    const port = portOf(p3);
     try {
       const result = await generateConfig({
         format,
-        endpointHostId: p2,
-        // Порт не передаём: generateConfig сам возьмёт «Авто» (случайный).
+        host: p2 as WarpHostChoice,
+        port,
         // IPv6 не передаём: дефолт — выключен (v4-only).
       });
       // Результат — одно сообщение: сам файл, со сводкой и подсказкой в подписи
       // и кнопкой «Ещё конфиг». Служебное «Генерирую…» удаляем.
-      const caption = `✅ <b>Готово!</b>\n\n${summary(format, p2)}\n\n${captionFor(format)}${sponsorLine()}`;
+      const caption = `✅ <b>Готово!</b>\n\n${summary(format, p2, port)}\n\n${captionFor(format)}${sponsorLine()}`;
       await sendDocument(chatId, result.fileName, result.config, caption, [
         [btn("🔄 Ещё конфиг", "restart")],
         [link("❤️ Поддержать проект", DONATE_URL)],
@@ -221,6 +248,10 @@ async function onCallback(cq: TgCallback): Promise<void> {
       break;
     case "f":
       await show(endpointMenu(formatOf(p1)));
+      break;
+    case "h":
+      // Хост выбран (p2) → шаг порта.
+      await show(portMenu(formatOf(p1), p2));
       break;
   }
   await answer(cq.id);

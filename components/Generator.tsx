@@ -1,7 +1,6 @@
 "use client";
 
 import { DONATE_URL } from "@/config/donate";
-import { DEFAULT_HOST_ID, ENDPOINT_HOSTS } from "@/config/endpoints";
 import { GUIDES, OS_OPTIONS, detectOs, type OsId } from "@/config/guides";
 import type { Sponsor } from "@/config/sponsor";
 import { copyConfig, download, saveEntry } from "@/lib/history";
@@ -10,10 +9,11 @@ import type {
   ConfigFormat,
   ConfigMeta,
   GenerateResult,
+  WarpHostChoice,
   WarpPort,
   WarpPortChoice,
 } from "@/types";
-import { DEFAULT_PORT_CHOICE, WARP_PORTS } from "@/types";
+import { DEFAULT_HOST_CHOICE, DEFAULT_PORT_CHOICE, WARP_HOSTS, WARP_PORTS } from "@/types";
 import { track } from "@vercel/analytics";
 import { useEffect, useRef, useState } from "react";
 
@@ -31,18 +31,14 @@ function formatLabel(format: ConfigFormat): string {
       return "Clash";
   }
 }
-const HOST_OPTIONS = ENDPOINT_HOSTS.map((h) => ({ value: h.id, label: h.label }));
+const HOST_OPTIONS = [
+  { value: "auto", label: "Авто" },
+  ...WARP_HOSTS.map((h) => ({ value: h, label: h })),
+];
 const PORT_OPTIONS = [
   { value: "auto", label: "Авто" },
   ...WARP_PORTS.map((p) => ({ value: String(p), label: String(p) })),
 ];
-
-const SOURCE_LABEL: Record<NonNullable<ConfigMeta["endpointSource"]>, string> = {
-  auto: "авто",
-  "manual-ip": "выбрано",
-  hostname: "hostname",
-  fallback: "резерв",
-};
 
 const LINK_CLASS =
   "mt-3 inline-flex items-center gap-1 text-[13px] font-semibold text-brand transition-colors hover:text-brand-hover";
@@ -169,8 +165,7 @@ function Toggle({
 function Diagnostics({ meta }: { meta: ConfigMeta }) {
   const rows: [string, string][] = [];
   if (meta.endpoint) {
-    const src = meta.endpointSource ? ` · ${SOURCE_LABEL[meta.endpointSource]}` : "";
-    rows.push(["Endpoint", `${meta.endpoint}${src}`]);
+    rows.push(["Endpoint", meta.endpoint]);
   }
   rows.push(["IPv6", meta.ipv6 ? "включён" : "выключен"]);
   if (rows.length === 0) return null;
@@ -263,7 +258,7 @@ function SponsorBlock({
 
 export default function Generator({ sponsor }: { sponsor: Sponsor | null }) {
   const [format, setFormat] = useState<ConfigFormat>("amneziawg");
-  const [endpointHostId, setEndpointHostId] = useState<string>(DEFAULT_HOST_ID);
+  const [host, setHost] = useState<WarpHostChoice>(DEFAULT_HOST_CHOICE);
   const [port, setPort] = useState<WarpPortChoice>(DEFAULT_PORT_CHOICE);
   // v4-only по умолчанию: IPv6 без рабочего v6-пути в сети даёт подвисания.
   const [ipv6, setIpv6] = useState(false);
@@ -303,7 +298,7 @@ export default function Generator({ sponsor }: { sponsor: Sponsor | null }) {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ format, endpointHostId, port, ipv6 }),
+        body: JSON.stringify({ format, host, port, ipv6 }),
       });
       const json = (await res.json()) as ApiResponse;
       if (!json.success) {
@@ -356,9 +351,9 @@ export default function Generator({ sponsor }: { sponsor: Sponsor | null }) {
 
         <Select
           label="Endpoint"
-          value={endpointHostId}
+          value={host}
           options={HOST_OPTIONS}
-          onChange={setEndpointHostId}
+          onChange={(v) => setHost(v as WarpHostChoice)}
         />
         <Select
           label="Порт"

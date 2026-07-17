@@ -1,10 +1,13 @@
 import net from "node:net";
-import type { EndpointSource, WarpPort, WarpPortChoice } from "@/types";
-import { DEFAULT_PORT_CHOICE, WARP_PORTS } from "@/types";
-import { ENDPOINT_HOSTS, IP_POOL, DEFAULT_HOST_ID } from "@/config/endpoints";
+import type { WarpHost, WarpHostChoice, WarpPort, WarpPortChoice } from "@/types";
+import { DEFAULT_HOST_CHOICE, DEFAULT_PORT_CHOICE, WARP_HOSTS, WARP_PORTS } from "@/types";
 
 // Server-only endpoint resolution (uses node:net). Keep this out of any client
-// component — config/endpoints.ts holds the pure data that the UI imports.
+// component.
+
+// Пул для авто-проб — только IP (хостнейм резолвится в один из них). Проверяем
+// TCP-доступность, поэтому «engage» тут лишний.
+const IP_POOL: WarpHost[] = WARP_HOSTS.filter((h) => /^[\d.]+$/.test(h));
 
 /**
  * TCP-connect probe. WARP data uses UDP, but these anycast IPs are Cloudflare
@@ -27,15 +30,14 @@ function tcpLatency(host: string, port: number, timeoutMs: number): Promise<numb
   });
 }
 
-/** Probe the IP pool in parallel; pick the fastest reachable, else fall back. */
-async function pickReachableIp(): Promise<{ host: string; source: EndpointSource }> {
+/** Probe the IP pool in parallel; pick the fastest reachable, else a random one. */
+async function pickReachableIp(): Promise<string> {
   const probes = await Promise.all(
-    IP_POOL.map(async (h) => ({ host: h.host!, latency: await tcpLatency(h.host!, 443, 700) })),
+    IP_POOL.map(async (host) => ({ host, latency: await tcpLatency(host, 443, 700) })),
   );
   const alive = probes.filter((p) => p.latency !== null).sort((a, b) => a.latency! - b.latency!);
-  if (alive.length > 0) return { host: alive[0].host, source: "auto" };
-  const random = IP_POOL[Math.floor(Math.random() * IP_POOL.length)];
-  return { host: random.host!, source: "fallback" };
+  if (alive.length > 0) return alive[0].host;
+  return IP_POOL[Math.floor(Math.random() * IP_POOL.length)];
 }
 
 /**
@@ -55,23 +57,14 @@ export interface ResolvedEndpoint {
   /** Host alone — Clash needs it apart from the port for `server:`. */
   host: string;
   port: WarpPort;
-  source: EndpointSource;
 }
 
-/** Resolve a host id + port into a concrete `host:port` and its source. */
+/** Resolve a host choice + port into a concrete `host:port`. */
 export async function resolveEndpoint(
-  hostId: string = DEFAULT_HOST_ID,
+  hostChoice: WarpHostChoice = DEFAULT_HOST_CHOICE,
   portChoice: WarpPortChoice = DEFAULT_PORT_CHOICE,
 ): Promise<ResolvedEndpoint> {
-  const chosen = ENDPOINT_HOSTS.find((h) => h.id === hostId) ?? ENDPOINT_HOSTS[0];
   const port = resolvePort(portChoice);
-
-  if (chosen.kind === "auto") {
-    const { host, source } = await pickReachableIp();
-    return { endpoint: `${host}:${port}`, host, port, source };
-  }
-
-  const host = chosen.host!;
-  const source: EndpointSource = chosen.kind === "hostname" ? "hostname" : "manual-ip";
-  return { endpoint: `${host}:${port}`, host, port, source };
+  const host = hostChoice === "auto" ? await pickReachableIp() : hostChoice;
+  return { endpoint: `${host}:${port}`, host, port };
 }
