@@ -42,7 +42,7 @@
 
 - **Форматы:** AmneziaWG (`.conf`, awg1.5) и Clash (`.yaml`)
 - **DNS:** в конфиг всегда кладутся оба резолвера — `dns.geohide.ru` и `xbox-dns.ru` (для обхода геоблока)
-- **Эндпоинты (оба формата):** пул anycast-IP Cloudflare (`162.159.192.1`, `.193.1`, `.195.1`, `188.114.96.1`, `.97.1`, `.99.1`) + хостнейм `engage.cloudflareclient.com`. «Авто» пробит пул по TCP и берёт живой; порт тоже «Авто» — случайный из [`WARP_PORTS`](types.ts) или конкретный
+- **Эндпоинты (оба формата):** пул anycast-IP Cloudflare (`162.159.192.1`, `.193.1`, `.195.1`) + хостнейм `engage.cloudflareclient.com`. «Авто» пробит пул по TCP и берёт живой; порт тоже «Авто» — случайный из [`WARP_PORTS`](types.ts) или конкретный
 - **Clash-роутинг:** один универсальный шаблон [`config/templates/clash.yaml`](config/templates/clash.yaml). Три узла Cloudflare WARP на одном IP, отличаются
   маской handshake (AmneziaWG `i1`) — переключаются вручную в клиенте. Российский сегмент
   (`GEOIP,RU`) идёт напрямую, остальное — через WARP.

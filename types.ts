@@ -1,7 +1,7 @@
 export type ConfigFormat = "amneziawg" | "clash";
 
 /** UDP ports Cloudflare WARP is known to accept. */
-export const WARP_PORTS = [4500, 2408, 500, 1701, 880, 8854] as const;
+export const WARP_PORTS = [4500, 2408, 500, 1701] as const;
 export type WarpPort = (typeof WARP_PORTS)[number];
 /** Выбор порта: конкретный или «Авто» — случайный из WARP_PORTS. */
 export type WarpPortChoice = WarpPort | "auto";
@@ -17,9 +17,6 @@ export const WARP_HOSTS = [
   "162.159.192.1",
   "162.159.193.1",
   "162.159.195.1",
-  "188.114.96.1",
-  "188.114.97.1",
-  "188.114.99.1",
 ] as const;
 export type WarpHost = (typeof WARP_HOSTS)[number];
 export type WarpHostChoice = WarpHost | "auto";
