@@ -4,7 +4,7 @@ import { WARP_HOSTS, WARP_PORTS, DEFAULT_HOST_CHOICE, DEFAULT_PORT_CHOICE } from
 import type { ApiResponse, WarpHost, WarpHostChoice, WarpPort, WarpPortChoice } from "@/types";
 
 // Registration calls Cloudflare per request and must never be cached; needs the
-// Node runtime for node:crypto key generation and node:net endpoint probing.
+// Node runtime for node:crypto key generation.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 

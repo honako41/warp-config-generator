@@ -1,33 +1,32 @@
 import type { GenerateRequest, GenerateResult } from "@/types";
-import { DEFAULT_HOST_CHOICE, DEFAULT_PORT_CHOICE } from "@/types";
+import { WARP_HOSTS, WARP_PORTS } from "@/types";
 import { generateKeyPair } from "./crypto";
 import { registerWarp } from "./cloudflare";
 import { buildAmneziaWG } from "./builders/amneziawg";
 import { buildClash } from "./builders/clash";
-import { resolveEndpoint } from "./endpoint-resolver";
+
+// «Авто» — просто случайный выбор; разброс размазывает риск (режут один IP или
+// порт — следующая генерация выдаст другой).
+const IP_POOL = WARP_HOSTS.filter((h) => /^[\d.]+$/.test(h));
+const pick = <T,>(xs: readonly T[]): T => xs[Math.floor(Math.random() * xs.length)];
 
 /**
- * Full pipeline: generate keys -> register with Cloudflare WARP -> pick a
- * reachable endpoint -> build the config in the requested format.
+ * Full pipeline: generate keys -> register with Cloudflare WARP -> pick an
+ * endpoint -> build the config in the requested format.
  */
 export async function generateConfig(req: GenerateRequest): Promise<GenerateResult> {
   const keyPair = generateKeyPair();
   const reg = await registerWarp(keyPair.publicKey);
 
-  const resolved = await resolveEndpoint(req.host ?? DEFAULT_HOST_CHOICE, req.port ?? DEFAULT_PORT_CHOICE);
+  const host = !req.host || req.host === "auto" ? pick(IP_POOL) : req.host;
+  const port = !req.port || req.port === "auto" ? pick(WARP_PORTS) : req.port;
   // v4-only by default: a dead IPv6 path in a client's network causes
   // happy-eyeballs stalls. The user can opt in on the site.
   const ipv6 = req.ipv6 ?? false;
 
   // Оба билдера принимают одинаковую форму — различаются только выходным
   // форматом (.conf против .yaml).
-  const params = {
-    privateKey: keyPair.privateKey,
-    clientIPv6: reg.clientIPv6,
-    host: resolved.host,
-    port: resolved.port,
-    ipv6,
-  };
+  const params = { privateKey: keyPair.privateKey, clientIPv6: reg.clientIPv6, host, port, ipv6 };
 
   let config: string;
   let fileName: string;
@@ -48,7 +47,7 @@ export async function generateConfig(req: GenerateRequest): Promise<GenerateResu
     format: req.format,
     meta: {
       format: req.format,
-      endpoint: resolved.endpoint,
+      endpoint: `${host}:${port}`,
       ipv6,
     },
   };

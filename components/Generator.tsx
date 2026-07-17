@@ -464,7 +464,7 @@ export default function Generator({ sponsor }: { sponsor: Sponsor | null }) {
                 <span className="h-3 w-3 rounded-full bg-term-yellow" />
                 <span className="h-3 w-3 rounded-full bg-term-green" />
               </div>
-              <pre className="m-0 max-h-[min(360px,52dvh)] overflow-auto p-4 font-mono text-[13px] leading-relaxed whitespace-pre text-ink [tab-size:2]">
+              <pre className="m-0 max-h-[min(360px,52dvh)] overflow-auto p-4 font-mono text-[13px] leading-relaxed whitespace-pre text-ink tab-2">
                 <code>{result.config}</code>
               </pre>
             </div>
