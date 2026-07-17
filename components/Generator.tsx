@@ -1,6 +1,5 @@
 "use client";
 
-import { DNS_PROVIDERS } from "@/config/dns";
 import { DONATE_URL } from "@/config/donate";
 import { DEFAULT_HOST_ID, ENDPOINT_HOSTS } from "@/config/endpoints";
 import { GUIDES, OS_OPTIONS, detectOs, type OsId } from "@/config/guides";
@@ -8,14 +7,13 @@ import type { Sponsor } from "@/config/sponsor";
 import { copyConfig, download, saveEntry } from "@/lib/history";
 import type {
   ApiResponse,
-  ClashDevice,
   ConfigFormat,
   ConfigMeta,
-  DnsId,
   GenerateResult,
   WarpPort,
+  WarpPortChoice,
 } from "@/types";
-import { DEFAULT_CLASH_DEVICE, DEFAULT_PORT, WARP_PORTS } from "@/types";
+import { DEFAULT_PORT_CHOICE, WARP_PORTS } from "@/types";
 import { track } from "@vercel/analytics";
 import { useEffect, useRef, useState } from "react";
 
@@ -23,13 +21,21 @@ const FORMAT_OPTIONS: readonly { value: ConfigFormat; label: string }[] = [
   { value: "amneziawg", label: "Amnezia" },
   { value: "clash", label: "Clash" },
 ];
-const CLASH_DEVICE_OPTIONS: readonly { value: ClashDevice; label: string }[] = [
-  { value: "desktop", label: "Компьютер" },
-  { value: "mobile", label: "Телефон" },
-];
-const DNS_OPTIONS = DNS_PROVIDERS.map((p) => ({ value: p.id, label: p.label }));
+
+/** Полное имя формата для заголовков и сводки. */
+function formatLabel(format: ConfigFormat): string {
+  switch (format) {
+    case "amneziawg":
+      return "AmneziaWG";
+    case "clash":
+      return "Clash";
+  }
+}
 const HOST_OPTIONS = ENDPOINT_HOSTS.map((h) => ({ value: h.id, label: h.label }));
-const PORT_OPTIONS = WARP_PORTS.map((p) => ({ value: String(p), label: String(p) }));
+const PORT_OPTIONS = [
+  { value: "auto", label: "Авто" },
+  ...WARP_PORTS.map((p) => ({ value: String(p), label: String(p) })),
+];
 
 const SOURCE_LABEL: Record<NonNullable<ConfigMeta["endpointSource"]>, string> = {
   auto: "авто",
@@ -156,21 +162,18 @@ function Toggle({
   );
 }
 
+/**
+ * Сводка по конфигу. Формат не показываем: его юзер только что выбрал сам, и он
+ * же в имени файла. Оба формата резолвят эндпоинт/порт и знают про IPv6.
+ */
 function Diagnostics({ meta }: { meta: ConfigMeta }) {
   const rows: [string, string][] = [];
-  if (meta.format === "amneziawg") {
-    rows.push(["Формат", "AmneziaWG"]);
-    if (meta.endpoint) {
-      const src = meta.endpointSource ? ` · ${SOURCE_LABEL[meta.endpointSource]}` : "";
-      rows.push(["Endpoint", `${meta.endpoint}${src}`]);
-    }
-    rows.push(["IPv6", meta.ipv6 ? "включён" : "выключен"]);
-    rows.push(["DNS", meta.dnsLabel]);
-  } else {
-    rows.push(["Формат", "Clash"]);
-    rows.push(["Устройство", meta.clashDevice === "mobile" ? "Телефон" : "Компьютер"]);
-    rows.push(["DNS", meta.dnsLabel]);
+  if (meta.endpoint) {
+    const src = meta.endpointSource ? ` · ${SOURCE_LABEL[meta.endpointSource]}` : "";
+    rows.push(["Endpoint", `${meta.endpoint}${src}`]);
   }
+  rows.push(["IPv6", meta.ipv6 ? "включён" : "выключен"]);
+  if (rows.length === 0) return null;
 
   return (
     <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-xl border border-hairline bg-surface-soft px-4 py-3 text-[13px]">
@@ -260,11 +263,10 @@ function SponsorBlock({
 
 export default function Generator({ sponsor }: { sponsor: Sponsor | null }) {
   const [format, setFormat] = useState<ConfigFormat>("amneziawg");
-  const [dnsId, setDnsId] = useState<DnsId>("geohide");
   const [endpointHostId, setEndpointHostId] = useState<string>(DEFAULT_HOST_ID);
-  const [port, setPort] = useState<WarpPort>(DEFAULT_PORT);
-  const [ipv6, setIpv6] = useState(true);
-  const [clashDevice, setClashDevice] = useState<ClashDevice>(DEFAULT_CLASH_DEVICE);
+  const [port, setPort] = useState<WarpPortChoice>(DEFAULT_PORT_CHOICE);
+  // v4-only по умолчанию: IPv6 без рабочего v6-пути в сети даёт подвисания.
+  const [ipv6, setIpv6] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<GenerateResult | null>(null);
@@ -301,7 +303,7 @@ export default function Generator({ sponsor }: { sponsor: Sponsor | null }) {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ format, dnsId, endpointHostId, port, ipv6, clashDevice }),
+        body: JSON.stringify({ format, endpointHostId, port, ipv6 }),
       });
       const json = (await res.json()) as ApiResponse;
       if (!json.success) {
@@ -313,7 +315,7 @@ export default function Generator({ sponsor }: { sponsor: Sponsor | null }) {
       saveEntry(json.data);
       setCopied(false);
       dialogRef.current?.showModal();
-      track("generate", { format, dns: dnsId, ipv6, port, clashDevice });
+      track("generate", { format, ipv6, port });
     } catch {
       setError("Не удалось связаться с сервером. Попробуйте ещё раз.");
       track("generate_error", { format, reason: "network" });
@@ -352,35 +354,20 @@ export default function Generator({ sponsor }: { sponsor: Sponsor | null }) {
       >
         <Segmented label="Формат" value={format} options={FORMAT_OPTIONS} onChange={setFormat} />
 
-        {format === "amneziawg" && (
-          <>
-            <Select
-              label="Endpoint"
-              value={endpointHostId}
-              options={HOST_OPTIONS}
-              onChange={setEndpointHostId}
-            />
-            <Select
-              label="Порт"
-              value={String(port)}
-              options={PORT_OPTIONS}
-              onChange={(v) => setPort(Number(v) as WarpPort)}
-            />
-          </>
-        )}
+        <Select
+          label="Endpoint"
+          value={endpointHostId}
+          options={HOST_OPTIONS}
+          onChange={setEndpointHostId}
+        />
+        <Select
+          label="Порт"
+          value={String(port)}
+          options={PORT_OPTIONS}
+          onChange={(v) => setPort(v === "auto" ? "auto" : (Number(v) as WarpPort))}
+        />
 
-        {format === "clash" && (
-          <Segmented
-            label="Устройство"
-            value={clashDevice}
-            options={CLASH_DEVICE_OPTIONS}
-            onChange={setClashDevice}
-          />
-        )}
-
-        <Segmented label="DNS" value={dnsId} options={DNS_OPTIONS} onChange={setDnsId} />
-
-        {format === "amneziawg" && <Toggle label="IPv6" checked={ipv6} onChange={setIpv6} />}
+        <Toggle label="IPv6" checked={ipv6} onChange={setIpv6} />
 
         <button
           type="submit"
@@ -455,7 +442,7 @@ export default function Generator({ sponsor }: { sponsor: Sponsor | null }) {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 id="result-title" className="text-lg font-bold text-ink">
-                  {result.format === "amneziawg" ? "AmneziaWG" : "Clash"}
+                  {formatLabel(result.format)}
                 </h2>
                 <span className="mt-1 block break-all font-mono text-xs text-mute">
                   {result.fileName}
@@ -473,7 +460,10 @@ export default function Generator({ sponsor }: { sponsor: Sponsor | null }) {
 
             <Diagnostics meta={result.meta} />
 
-            <div className="overflow-hidden rounded-xl border border-hairline bg-canvas">
+            {/* Превью прячем на узких и низких экранах: там от <pre> остаётся
+                полоска в пару строк, в которой всё равно ничего не разобрать, —
+                а «Копировать» и «Скачать» работают и без него. */}
+            <div className="overflow-hidden rounded-xl border border-hairline bg-canvas max-sm:hidden [@media(max-height:600px)]:hidden">
               <div className="flex items-center gap-2 border-b border-hairline px-4 py-3" aria-hidden="true">
                 <span className="h-3 w-3 rounded-full bg-term-red" />
                 <span className="h-3 w-3 rounded-full bg-term-yellow" />
@@ -541,7 +531,7 @@ export default function Generator({ sponsor }: { sponsor: Sponsor | null }) {
                 Как подключиться
               </h2>
               <span className="mt-1 block text-xs text-mute">
-                {guideFormat === "amneziawg" ? "AmneziaWG" : "Clash"} · выберите устройство
+                {formatLabel(guideFormat)} · выберите устройство
               </span>
             </div>
             <button

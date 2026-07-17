@@ -86,6 +86,10 @@ export async function copyConfig(text: string): Promise<boolean> {
 }
 
 export function summarize(meta: ConfigMeta): string {
-  if (meta.format === "amneziawg") return `AmneziaWG · ${meta.endpoint ?? "—"}`;
-  return `Clash · ${meta.dnsLabel}`;
+  switch (meta.format) {
+    case "amneziawg":
+      return `AmneziaWG · ${meta.endpoint ?? "—"}`;
+    case "clash":
+      return "Clash";
+  }
 }

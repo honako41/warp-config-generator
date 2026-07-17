@@ -1,6 +1,6 @@
 import net from "node:net";
-import type { EndpointSource, WarpPort } from "@/types";
-import { DEFAULT_PORT } from "@/types";
+import type { EndpointSource, WarpPort, WarpPortChoice } from "@/types";
+import { DEFAULT_PORT_CHOICE, WARP_PORTS } from "@/types";
 import { ENDPOINT_HOSTS, IP_POOL, DEFAULT_HOST_ID } from "@/config/endpoints";
 
 // Server-only endpoint resolution (uses node:net). Keep this out of any client
@@ -38,8 +38,22 @@ async function pickReachableIp(): Promise<{ host: string; source: EndpointSource
   return { host: random.host!, source: "fallback" };
 }
 
+/**
+ * «Авто» — случайный порт из пула. WARP слушает их все, но фильтруются они
+ * по-разному, поэтому один порт, зашитый на всех пользователей, — общая точка
+ * отказа: стоит провайдеру прикрыть его, и конфиги перестают работать у всех
+ * сразу. Разброс размазывает риск.
+ */
+function resolvePort(choice: WarpPortChoice): WarpPort {
+  if (choice !== "auto") return choice;
+  return WARP_PORTS[Math.floor(Math.random() * WARP_PORTS.length)];
+}
+
 export interface ResolvedEndpoint {
+  /** `host:port` — ready to drop into an AmneziaWG `Endpoint =` line. */
   endpoint: string;
+  /** Host alone — Clash needs it apart from the port for `server:`. */
+  host: string;
   port: WarpPort;
   source: EndpointSource;
 }
@@ -47,15 +61,17 @@ export interface ResolvedEndpoint {
 /** Resolve a host id + port into a concrete `host:port` and its source. */
 export async function resolveEndpoint(
   hostId: string = DEFAULT_HOST_ID,
-  port: WarpPort = DEFAULT_PORT,
+  portChoice: WarpPortChoice = DEFAULT_PORT_CHOICE,
 ): Promise<ResolvedEndpoint> {
   const chosen = ENDPOINT_HOSTS.find((h) => h.id === hostId) ?? ENDPOINT_HOSTS[0];
+  const port = resolvePort(portChoice);
 
   if (chosen.kind === "auto") {
     const { host, source } = await pickReachableIp();
-    return { endpoint: `${host}:${port}`, port, source };
+    return { endpoint: `${host}:${port}`, host, port, source };
   }
 
+  const host = chosen.host!;
   const source: EndpointSource = chosen.kind === "hostname" ? "hostname" : "manual-ip";
-  return { endpoint: `${chosen.host}:${port}`, port, source };
+  return { endpoint: `${host}:${port}`, host, port, source };
 }

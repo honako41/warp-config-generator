@@ -6,11 +6,12 @@ const HEADERS = {
 } as const;
 
 export interface WarpRegistration {
-  /** Cloudflare's WARP peer public key. */
-  peerPublicKey: string;
-  /** Client interface IPv4 (always 172.16.0.2 for WARP). */
-  clientIPv4: string;
-  /** Client interface IPv6 assigned to this registration. */
+  /**
+   * Client interface IPv6, the only per-registration value we need — the peer
+   * public key and the IPv4 (172.16.0.2) are WARP constants baked into the
+   * builders. Registration itself is still required: it's what makes the
+   * freshly generated key valid at the WARP endpoint.
+   */
   clientIPv6: string;
 }
 
@@ -21,8 +22,7 @@ interface RegResponse {
 interface WarpResponse {
   result?: {
     config?: {
-      peers?: { public_key?: string }[];
-      interface?: { addresses?: { v4?: string; v6?: string } };
+      interface?: { addresses?: { v6?: string } };
     };
   };
 }
@@ -62,15 +62,10 @@ export async function registerWarp(publicKey: string): Promise<WarpRegistration>
   if (!warp.ok) throw new Error(`Активация WARP не удалась: HTTP ${warp.status}`);
 
   const warpData = (await warp.json()) as WarpResponse;
-  const peer = warpData.result?.config?.peers?.[0];
-  const iface = warpData.result?.config?.interface;
-  if (!peer?.public_key || !iface?.addresses?.v4 || !iface.addresses.v6) {
+  const clientIPv6 = warpData.result?.config?.interface?.addresses?.v6;
+  if (!clientIPv6) {
     throw new Error("Некорректный ответ конфигурации WARP");
   }
 
-  return {
-    peerPublicKey: peer.public_key,
-    clientIPv4: iface.addresses.v4,
-    clientIPv6: iface.addresses.v6,
-  };
+  return { clientIPv6 };
 }

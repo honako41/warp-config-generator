@@ -1,10 +1,8 @@
 import { generateConfig } from "./warp";
-import { DNS_PROVIDERS } from "@/config/dns";
 import { ENDPOINT_HOSTS, endpointLabel } from "@/config/endpoints";
 import { SPONSOR, isSponsorEnabled } from "@/config/sponsor";
 import { DONATE_URL } from "@/config/donate";
-import { DEFAULT_PORT } from "@/types";
-import type { ConfigFormat, DnsId } from "@/types";
+import type { ConfigFormat } from "@/types";
 
 // Shared Telegram-bot logic, used by the webhook route (app/api/telegram).
 // Reuses generateConfig as-is; the UI is a small inline-keyboard wizard.
@@ -43,8 +41,6 @@ const btn = (text: string, callback_data: string): Btn => ({ text, callback_data
 const link = (text: string, url: string): Btn => ({ text, url });
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-const dnsLabel = (id: string) => DNS_PROVIDERS.find((p) => p.id === id)?.label ?? id;
-const deviceLabel = (id: string) => (id === "mobile" ? "📱 Телефон" : "💻 Компьютер");
 
 // ── Telegram API helpers ──────────────────────────────────────────────────
 async function tg(method: string, body: unknown): Promise<void> {
@@ -99,59 +95,54 @@ async function deleteMessage(chatId: number, messageId: number): Promise<void> {
 }
 
 // ── Wizard menus ──────────────────────────────────────────────────────────
+
 function formatMenu(): Menu {
   return {
     text:
       "👋 <b>WARP Config RU</b>\n\n" +
       "Сгенерирую рабочий конфиг Cloudflare WARP со свежими ключами.\n\n" +
-      "<b>Шаг 1</b> · Формат",
-    rows: [[btn(`${FORMAT.amneziawg.emoji} AmneziaWG`, "f:amneziawg"), btn(`${FORMAT.clash.emoji} Clash`, "f:clash")]],
-  };
-}
-
-function endpointMenu(): Menu {
-  return {
-    text: `${FORMAT.amneziawg.emoji} <b>AmneziaWG</b>\n\n<b>Шаг 2 из 3</b> · Эндпоинт`,
-    rows: [...ENDPOINT_HOSTS.map((e) => [btn(e.label, `e:${e.id}`)]), [btn("‹ Назад", "back:format")]],
-  };
-}
-
-// Промежуточный шаг (mid): у AmneziaWG это id эндпоинта, у Clash — устройство
-// (desktop/mobile). Он же прокидывается в callback генерации.
-function deviceMenu(): Menu {
-  return {
-    text: `${FORMAT.clash.emoji} <b>Clash</b>\n\n<b>Шаг 2 из 3</b> · Устройство`,
+      "Формат:",
+    // Оба формата ведут к выбору эндпоинта. Порт — «Авто», IPv6 выключен;
+    // тонкая настройка живёт на сайте.
     rows: [
-      [btn("💻 Компьютер", "cd:desktop"), btn("📱 Телефон", "cd:mobile")],
+      [btn(`${FORMAT.amneziawg.emoji} AmneziaWG`, "f:amneziawg"), btn(`${FORMAT.clash.emoji} Clash`, "f:clash")],
+    ],
+  };
+}
+
+function endpointMenu(format: ConfigFormat): Menu {
+  const f = FORMAT[format];
+  return {
+    text: `${f.emoji} <b>${f.label}</b>\n\nЭндпоинт:`,
+    rows: [
+      ...ENDPOINT_HOSTS.map((e) => [btn(e.label, `g:${format}:${e.id}`)]),
       [btn("‹ Назад", "back:format")],
     ],
   };
 }
 
-function dnsMenu(format: ConfigFormat, mid: string): Menu {
-  const crumb =
-    format === "amneziawg"
-      ? `${FORMAT.amneziawg.emoji} <b>AmneziaWG</b> · ${endpointLabel(mid)}\n\n<b>Шаг 3 из 3</b> · DNS`
-      : `${FORMAT.clash.emoji} <b>Clash</b> · ${deviceLabel(mid)}\n\n<b>Шаг 3 из 3</b> · DNS`;
-  return {
-    text: crumb,
-    rows: [
-      ...DNS_PROVIDERS.map((p) => [btn(p.label, `g:${format}:${mid}:${p.id}`)]),
-      [btn("‹ Назад", `back:${format}`)],
-    ],
-  };
+function summary(format: ConfigFormat, mid: string): string {
+  const f = FORMAT[format];
+  return `${f.emoji} <b>${f.label}</b> · ${endpointLabel(mid)}`;
 }
 
-function summary(format: ConfigFormat, mid: string, dns: string): string {
-  return format === "amneziawg"
-    ? `${FORMAT.amneziawg.emoji} <b>AmneziaWG</b> · ${endpointLabel(mid)} · ${dnsLabel(dns)}`
-    : `${FORMAT.clash.emoji} <b>Clash</b> · ${deviceLabel(mid)} · ${dnsLabel(dns)}`;
+/** callback-параметр (p1) в формат; всё, кроме "clash", считаем AmneziaWG. */
+function formatOf(p1: string): ConfigFormat {
+  switch (p1) {
+    case "clash":
+      return "clash";
+    default:
+      return "amneziawg";
+  }
 }
 
 function captionFor(format: ConfigFormat): string {
-  return format === "amneziawg"
-    ? "📥 <b>Импорт:</b> откройте файл в AmneziaVPN (нужен клиент с поддержкой awg)."
-    : "📥 <b>Импорт:</b> добавьте как профиль в Mihomo Party / FlClash / Nikki.";
+  switch (format) {
+    case "amneziawg":
+      return "📥 <b>Импорт:</b> откройте файл в AmneziaVPN (нужен клиент с поддержкой awg).";
+    case "clash":
+      return "📥 <b>Импорт:</b> добавьте как профиль в Mihomo Party / FlClash / Nikki.";
+  }
 }
 
 /** Спонсорская строка для подписи к файлу (пусто, если блок выключен). */
@@ -186,7 +177,7 @@ async function onCallback(cq: TgCallback): Promise<void> {
     await answer(cq.id);
     return;
   }
-  const [kind, p1, p2, p3] = data.split(":");
+  const [kind, p1, p2] = data.split(":");
   const show = (menu: Menu) => edit(chatId, messageId, menu.text, menu.rows);
 
   // "Ещё конфиг" обычно приходит с сообщения-файла (его текст editMessageText
@@ -201,21 +192,17 @@ async function onCallback(cq: TgCallback): Promise<void> {
   if (kind === "g") {
     await answer(cq.id);
     await edit(chatId, messageId, "⏳ Генерирую конфиг…", []);
-    const format: ConfigFormat = p1 === "clash" ? "clash" : "amneziawg";
-    const dnsId: DnsId = p3 === "xbox" ? "xbox" : "geohide";
+    const format = formatOf(p1);
     try {
       const result = await generateConfig({
         format,
-        dnsId,
-        endpointHostId: format === "amneziawg" ? p2 : undefined,
-        port: format === "amneziawg" ? DEFAULT_PORT : undefined,
-        ipv6: true,
-        // Для Clash p2 — устройство (desktop/mobile).
-        clashDevice: format === "clash" ? (p2 === "mobile" ? "mobile" : "desktop") : undefined,
+        endpointHostId: p2,
+        // Порт не передаём: generateConfig сам возьмёт «Авто» (случайный).
+        // IPv6 не передаём: дефолт — выключен (v4-only).
       });
       // Результат — одно сообщение: сам файл, со сводкой и подсказкой в подписи
       // и кнопкой «Ещё конфиг». Служебное «Генерирую…» удаляем.
-      const caption = `✅ <b>Готово!</b>\n\n${summary(format, p2, p3)}\n\n${captionFor(format)}${sponsorLine()}`;
+      const caption = `✅ <b>Готово!</b>\n\n${summary(format, p2)}\n\n${captionFor(format)}${sponsorLine()}`;
       await sendDocument(chatId, result.fileName, result.config, caption, [
         [btn("🔄 Ещё конфиг", "restart")],
         [link("❤️ Поддержать проект", DONATE_URL)],
@@ -230,20 +217,10 @@ async function onCallback(cq: TgCallback): Promise<void> {
 
   switch (kind) {
     case "back":
-      // back:amneziawg → эндпоинт; back:clash → выбор устройства; back:format → формат.
-      if (p1 === "amneziawg") await show(endpointMenu());
-      else if (p1 === "clash") await show(deviceMenu());
-      else await show(formatMenu());
+      await show(formatMenu());
       break;
     case "f":
-      await show(p1 === "amneziawg" ? endpointMenu() : deviceMenu());
-      break;
-    case "cd":
-      // Устройство Clash выбрано (p1 = desktop|mobile) → шаг DNS.
-      await show(dnsMenu("clash", p1));
-      break;
-    case "e":
-      await show(dnsMenu("amneziawg", p1));
+      await show(endpointMenu(formatOf(p1)));
       break;
   }
   await answer(cq.id);

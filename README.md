@@ -27,7 +27,7 @@
 через официальный WARP API, поэтому конфиги рабочие «из коробки».
 
 Вдохновлён [nellimonix/warp-config-generator-vercel](https://github.com/nellimonix/warp-config-generator-vercel),
-но намеренно упрощён: два формата, два DNS, два эндпоинта.
+но намеренно упрощён.
 
 ## 🪞 Зеркала
 
@@ -41,16 +41,11 @@
 ## ✨ Что внутри
 
 - **Форматы:** AmneziaWG (`.conf`, awg1.5) и Clash (`.yaml`)
-- **DNS:** `dns.geohide.ru` и `xbox-dns.ru`
-- **Эндпоинты (для AmneziaWG):** `162.159.195.1:500` и `engage.cloudflareclient.com:2408`
-- **Clash-роутинг:** переключатель **Компьютер / Телефон** — два шаблона:
-  - *Компьютер* — [`config/templates/clash.yaml`](config/templates/clash.yaml), правила из
-    [rekryt/iplist](https://github.com/rekryt/iplist)
-  - *Телефон* — [`config/templates/clash-mobile.yaml`](config/templates/clash-mobile.yaml),
-    роутинг из [hydraponique/roscomvpn-routing](https://github.com/hydraponique/roscomvpn-routing)
-
-  Заблокированные сервисы разложены по группам-тумблерам (AI, YouTube, Discord, Игры…) → через
-  WARP, а российский сегмент → напрямую. Что куда гнать, пользователь решает прямо в клиенте.
+- **DNS:** в конфиг всегда кладутся оба резолвера — `dns.geohide.ru` и `xbox-dns.ru` (для обхода геоблока)
+- **Эндпоинты (оба формата):** пул anycast-IP Cloudflare (`162.159.192.1`, `.193.1`, `.195.1`, `188.114.96.1`, `.97.1`, `.99.1`) + хостнейм `engage.cloudflareclient.com`. «Авто» пробит пул по TCP и берёт живой; порт тоже «Авто» — случайный из [`WARP_PORTS`](types.ts) или конкретный
+- **Clash-роутинг:** один универсальный шаблон [`config/templates/clash.yaml`](config/templates/clash.yaml). Три узла Cloudflare WARP на одном IP, отличаются
+  маской handshake (AmneziaWG `i1`) — переключаются вручную в клиенте. Российский сегмент
+  (`GEOIP,RU`) идёт напрямую, остальное — через WARP.
 - 🤖 **Telegram-бот** с тем же генератором — на случай, когда сайт недоступен
 - Результат открывается в модальном окне: копирование и скачивание файла
 
@@ -110,27 +105,12 @@ npm i -g netlify-cli
 netlify deploy --build --prod
 ```
 
-## 🗂️ Где что менять
-
-| Нужно изменить | Файл |
-|---|---|
-| DNS-провайдеры | [`config/dns.ts`](config/dns.ts) |
-| Эндпоинты AmneziaWG | [`config/endpoints.ts`](config/endpoints.ts) |
-| Clash-роутинг (компьютер) | [`config/templates/clash.yaml`](config/templates/clash.yaml) |
-| Clash-роутинг (телефон) | [`config/templates/clash-mobile.yaml`](config/templates/clash-mobile.yaml) |
-| WARP-эндпоинты (оба шаблона) | [`scripts/gen-endpoints.mjs`](scripts/gen-endpoints.mjs) → `npm run gen:endpoints` |
-| Параметры awg1.5 | [`lib/builders/amneziawg.ts`](lib/builders/amneziawg.ts) |
-| I1-маски (awg1.5-сигнатура) | [`lib/i1-masks.ts`](lib/i1-masks.ts) |
-| Логика Telegram-бота | [`lib/telegram.ts`](lib/telegram.ts) |
-
 ## 🤖 Telegram-бот
 
 Тот же генератор доступен как Telegram-бот — вебхук [`app/api/telegram/route.ts`](app/api/telegram/route.ts)
 (общая логика в [`lib/telegram.ts`](lib/telegram.ts)), переиспользует ту же `generateConfig`.
 Работает бесплатно на Vercel/Netlify — это обычная serverless-функция, которую дёргает Telegram.
 
-Бот пошагово спрашивает формат → эндпоинт (AmneziaWG) / устройство Компьютер·Телефон (Clash) → DNS
-и присылает готовый `.conf`/`.yaml` файлом.
 
 Настройка:
 

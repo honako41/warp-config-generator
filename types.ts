@@ -1,29 +1,23 @@
 export type ConfigFormat = "amneziawg" | "clash";
-export type DnsId = "geohide" | "xbox";
-
-/** Clash only — какой шаблон роутинга использовать. */
-export type ClashDevice = "desktop" | "mobile";
-export const DEFAULT_CLASH_DEVICE: ClashDevice = "desktop";
 
 /** UDP ports Cloudflare WARP is known to accept. */
 export const WARP_PORTS = [4500, 2408, 500, 1701, 880, 8854] as const;
 export type WarpPort = (typeof WARP_PORTS)[number];
-export const DEFAULT_PORT: WarpPort = 4500;
+/** Выбор порта: конкретный или «Авто» — случайный из WARP_PORTS. */
+export type WarpPortChoice = WarpPort | "auto";
+export const DEFAULT_PORT_CHOICE: WarpPortChoice = "auto";
 
 /** How the endpoint host in the final config was chosen. */
 export type EndpointSource = "auto" | "manual-ip" | "hostname" | "fallback";
 
 export interface GenerateRequest {
   format: ConfigFormat;
-  dnsId: DnsId;
-  /** AmneziaWG only — id from config/endpoints ENDPOINT_HOSTS. */
+  /** id from config/endpoints ENDPOINT_HOSTS. */
   endpointHostId?: string;
-  /** AmneziaWG only. */
-  port?: WarpPort;
-  /** AmneziaWG only — include IPv6 address/route/DNS. */
+  /** Конкретный порт или «auto» (случайный из пула). */
+  port?: WarpPortChoice;
+  /** Include IPv6. Default off (v4-only); opt in on the site. */
   ipv6?: boolean;
-  /** Clash only — desktop (текущий) или mobile (роутинг для телефона). */
-  clashDevice?: ClashDevice;
 }
 
 /** Diagnostics surfaced in the result modal and stored in history. */
@@ -34,9 +28,6 @@ export interface ConfigMeta {
   endpointSource?: EndpointSource;
   port?: number;
   ipv6?: boolean;
-  dnsLabel: string;
-  /** Clash only. */
-  clashDevice?: ClashDevice;
 }
 
 export interface GenerateResult {

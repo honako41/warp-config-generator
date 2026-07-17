@@ -1,12 +1,11 @@
 import type { GenerateRequest, GenerateResult } from "@/types";
-import { DEFAULT_CLASH_DEVICE, DEFAULT_PORT } from "@/types";
+import { DEFAULT_PORT_CHOICE } from "@/types";
 import { generateKeyPair } from "./crypto";
 import { registerWarp } from "./cloudflare";
 import { buildAmneziaWG } from "./builders/amneziawg";
 import { buildClash } from "./builders/clash";
 import { resolveEndpoint } from "./endpoint-resolver";
 import { DEFAULT_HOST_ID } from "@/config/endpoints";
-import { getDnsProvider } from "@/config/dns";
 
 /**
  * Full pipeline: generate keys -> register with Cloudflare WARP -> pick a
@@ -15,50 +14,46 @@ import { getDnsProvider } from "@/config/dns";
 export async function generateConfig(req: GenerateRequest): Promise<GenerateResult> {
   const keyPair = generateKeyPair();
   const reg = await registerWarp(keyPair.publicKey);
-  const dnsLabel = getDnsProvider(req.dnsId).label;
 
-  if (req.format === "amneziawg") {
-    const ipv6 = req.ipv6 ?? true;
-    const port = req.port ?? DEFAULT_PORT;
-    const resolved = await resolveEndpoint(req.endpointHostId ?? DEFAULT_HOST_ID, port);
+  const resolved = await resolveEndpoint(req.endpointHostId ?? DEFAULT_HOST_ID, req.port ?? DEFAULT_PORT_CHOICE);
+  // v4-only by default: a dead IPv6 path in a client's network causes
+  // happy-eyeballs stalls. The user can opt in on the site.
+  const ipv6 = req.ipv6 ?? false;
 
-    const config = buildAmneziaWG({
-      privateKey: keyPair.privateKey,
-      peerPublicKey: reg.peerPublicKey,
-      clientIPv4: reg.clientIPv4,
-      clientIPv6: reg.clientIPv6,
-      dnsId: req.dnsId,
-      endpoint: resolved.endpoint,
-      ipv6,
-    });
-
-    return {
-      config,
-      fileName: `warp-awg-${stamp()}.conf`,
-      format: "amneziawg",
-      meta: {
-        format: "amneziawg",
-        endpoint: resolved.endpoint,
-        endpointSource: resolved.source,
-        port: resolved.port,
-        ipv6,
-        dnsLabel,
-      },
-    };
-  }
-
-  const clashDevice = req.clashDevice ?? DEFAULT_CLASH_DEVICE;
-  const config = await buildClash({
+  // Оба билдера принимают одинаковую форму — различаются только выходным
+  // форматом (.conf против .yaml).
+  const params = {
     privateKey: keyPair.privateKey,
     clientIPv6: reg.clientIPv6,
-    dnsId: req.dnsId,
-    device: clashDevice,
-  });
+    host: resolved.host,
+    port: resolved.port,
+    ipv6,
+  };
+
+  let config: string;
+  let fileName: string;
+  switch (req.format) {
+    case "amneziawg":
+      config = buildAmneziaWG(params);
+      fileName = `warp-awg-${stamp()}.conf`;
+      break;
+    case "clash":
+      config = await buildClash(params);
+      fileName = `warp-clash-${stamp()}.yaml`;
+      break;
+  }
+
   return {
     config,
-    fileName: `warp-clash-${clashDevice}-${stamp()}.yaml`,
-    format: "clash",
-    meta: { format: "clash", dnsLabel, clashDevice },
+    fileName,
+    format: req.format,
+    meta: {
+      format: req.format,
+      endpoint: resolved.endpoint,
+      endpointSource: resolved.source,
+      port: resolved.port,
+      ipv6,
+    },
   };
 }
 
