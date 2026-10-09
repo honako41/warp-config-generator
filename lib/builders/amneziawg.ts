@@ -6,11 +6,10 @@ const MTU = 1280;
 const WARP_PUBLIC_KEY = "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=";
 const CLIENT_IPV4 = "172.16.0.2";
 
-// Резолверы для обхода геоблока — оба провайдера сразу (geohide, затем xbox);
-// у клиента это порядок опроса. IPv6-адреса добавляются только в dual-stack.
+// Резолверы для обхода геоблока — оба провайдера сразу (geohide, затем comss);
+// у клиента это порядок опроса. IPv6-резолверов у них нет, поэтому только v4.
 // Те же значения захардкожены в config/templates/clash.yaml.
-const DNS_V4 = ["45.155.204.190", "37.230.192.51", "111.88.96.50", "111.88.96.51"];
-const DNS_V6 = ["2a00:ab00:1233:26::50", "2a00:ab00:1233:26::51"];
+const DNS = ["45.155.204.190", "37.230.192.51", "83.220.169.155", "212.109.195.93"];
 
 // AmneziaWG 1.5 I1-маски (мимикрия под QUIC-handshake), из референсного
 // warp-config-generator. Каждая — готовая строка `I1 = <b 0x...>`; на конфиг
@@ -38,7 +37,7 @@ export interface AmneziaWGParams {
  * values — only the junk (Jc) and I1 signature survive against it.
  */
 export function buildAmneziaWG(p: AmneziaWGParams): string {
-  const dns = (p.ipv6 ? [...DNS_V4, ...DNS_V6] : DNS_V4).join(", ");
+  const dns = DNS.join(", ");
   const address = p.ipv6 ? `${CLIENT_IPV4}, ${p.clientIPv6}` : CLIENT_IPV4;
   const allowedIPs = p.ipv6 ? "0.0.0.0/0, ::/0" : "0.0.0.0/0";
 

@@ -31,9 +31,9 @@ dns:
   enable: true
   listen: 0.0.0.0:7874
   ipv6: false
-  default-nameserver: [45.155.204.190, 37.230.192.51, 111.88.96.50, 111.88.96.51]
-  nameserver: [45.155.204.190, 37.230.192.51, 111.88.96.50, 111.88.96.51]
-  proxy-server-nameserver: [45.155.204.190, 37.230.192.51, 111.88.96.50, 111.88.96.51]
+  default-nameserver: [45.155.204.190, 37.230.192.51, 83.220.169.155, 212.109.195.93]
+  nameserver: [45.155.204.190, 37.230.192.51, 83.220.169.155, 212.109.195.93]
+  proxy-server-nameserver: [45.155.204.190, 37.230.192.51, 83.220.169.155, 212.109.195.93]
 
 sniffer:
   enable: true
@@ -93,8 +93,8 @@ proxy-groups:
 rules:
   - IP-CIDR,45.155.204.190/32,DIRECT,no-resolve
   - IP-CIDR,37.230.192.51/32,DIRECT,no-resolve
-  - IP-CIDR,111.88.96.50/32,DIRECT,no-resolve
-  - IP-CIDR,111.88.96.51/32,DIRECT,no-resolve
+  - IP-CIDR,83.220.169.155/32,DIRECT,no-resolve
+  - IP-CIDR,212.109.195.93/32,DIRECT,no-resolve
   - IP-CIDR,WARP_ENDPOINT/32,DIRECT,no-resolve
   - IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
   - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
